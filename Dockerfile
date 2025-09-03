@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1.7
-ARG CADDY_VERSION=v2.10.2
+# Always follow the official latest runtime/builder images
+ARG CADDY_IMAGE_VERSION=latest
+
+# Plugins to build in (append/remove as needed)
 ARG PLUGINS="\
   --with github.com/mholt/caddy-l4 \
   --with github.com/caddyserver/forwardproxy \
@@ -13,13 +16,13 @@ ARG PLUGINS="\
   --with github.com/imgk/caddy-trojan \
 "
 
-FROM caddy:${CADDY_VERSION}-builder AS builder
-ARG CADDY_VERSION
+# Build stage
+FROM caddy:${CADDY_IMAGE_VERSION}-builder AS builder
 ARG PLUGINS
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    xcaddy build ${CADDY_VERSION} ${PLUGINS}
+    xcaddy build ${PLUGINS}
 
-FROM caddy:${CADDY_VERSION}
+# Runtime stage
+FROM caddy:${CADDY_IMAGE_VERSION}
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
-# 与官方保持一致：/etc/caddy /data /config 作为常用挂载点
