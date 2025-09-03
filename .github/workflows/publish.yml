@@ -46,15 +46,35 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Docker meta
-        id: meta
+      # 1) 基础标签：始终产出 sha-<short>
+      - name: Docker meta (base: sha)
+        id: meta_sha
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{ is_default_branch }}
             type=sha,prefix=sha-,format=short
-            type=raw,value=nightly,enable={{ is_schedule }}
+
+      # 2) latest：在 main 分支 push，或定时任务时也更新 latest
+      #    （如果你只想 main push 才更新 latest，把下面条件改成：github.ref == 'refs/heads/main'）
+      - name: Docker meta (latest)
+        id: meta_latest
+        if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+
+      # 3) nightly：仅定时任务时产出
+      - name: Docker meta (nightly)
+        id: meta_nightly
+        if: github.event_name == 'schedule'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=nightly
 
       - name: Build and Push (multi-arch)
         uses: docker/build-push-action@v6
@@ -62,10 +82,16 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          # 合并三个步骤的 tag 输出（没运行的步骤输出为空字符串，不影响）
+          tags: |
+            ${{ steps.meta_sha.outputs.tags }}
+            ${{ steps.meta_latest.outputs.tags }}
+            ${{ steps.meta_nightly.outputs.tags }}
+          # 用 base 的 labels 即可
+          labels: ${{ steps.meta_sha.outputs.labels }}
           build-args: |
             CADDY_IMAGE_VERSION=${{ env.CADDY_IMAGE_VERSION }}
             PLUGINS=${{ env.PLUGINS }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
