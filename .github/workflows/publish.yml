@@ -46,8 +46,8 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 1) 基础标签：始终产出 sha-<short>
-      - name: Docker meta (base: sha)
+      # 1) base meta: always produce sha-* tag
+      - name: Docker meta base sha
         id: meta_sha
         uses: docker/metadata-action@v5
         with:
@@ -55,9 +55,9 @@ jobs:
           tags: |
             type=sha,prefix=sha-,format=short
 
-      # 2) latest：在 main 分支 push，或定时任务时也更新 latest
-      #    （如果你只想 main push 才更新 latest，把下面条件改成：github.ref == 'refs/heads/main'）
-      - name: Docker meta (latest)
+      # 2) latest tag: update on main pushes and on scheduled runs
+      #    (if you only want main pushes, change condition to: github.ref == 'refs/heads/main')
+      - name: Docker meta latest
         id: meta_latest
         if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
         uses: docker/metadata-action@v5
@@ -66,8 +66,8 @@ jobs:
           tags: |
             type=raw,value=latest
 
-      # 3) nightly：仅定时任务时产出
-      - name: Docker meta (nightly)
+      # 3) nightly tag: only on schedule
+      - name: Docker meta nightly
         id: meta_nightly
         if: github.event_name == 'schedule'
         uses: docker/metadata-action@v5
@@ -76,22 +76,20 @@ jobs:
           tags: |
             type=raw,value=nightly
 
-      - name: Build and Push (multi-arch)
+      - name: Build and Push multi-arch
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          # 合并三个步骤的 tag 输出（没运行的步骤输出为空字符串，不影响）
+          # Merge tags from all meta steps (empty outputs are ignored)
           tags: |
             ${{ steps.meta_sha.outputs.tags }}
             ${{ steps.meta_latest.outputs.tags }}
             ${{ steps.meta_nightly.outputs.tags }}
-          # 用 base 的 labels 即可
           labels: ${{ steps.meta_sha.outputs.labels }}
           build-args: |
             CADDY_IMAGE_VERSION=${{ env.CADDY_IMAGE_VERSION }}
             PLUGINS=${{ env.PLUGINS }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
